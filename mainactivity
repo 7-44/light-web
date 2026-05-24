@@ -58,7 +58,7 @@ class MainActivity : Activity() {
         }
         val btnBack = Button(this).apply { 
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            text = "<" 
+            text = "<뒤로가기 
         }
         bottomBar.addView(btnBack)
 
