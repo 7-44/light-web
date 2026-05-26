@@ -22,14 +22,14 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. 저작권 팝업 및 7일 설정 로직
+        // 1. 7일 주기 팝업 및 안내 문구 설정
         val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         val lastShowTime = prefs.getLong("last_show_time", 0L)
         if (System.currentTimeMillis() - lastShowTime > 7 * 24 * 60 * 60 * 1000L) {
             val checkBox = CheckBox(this).apply { text = "일주일간 다시 보지 않기 / Don't show for 7 days" }
             AlertDialog.Builder(this).apply {
                 setTitle("공지사항 / Notice")
-                setMessage("저작권 법을 준수합시다.\nLet's comply with copyright laws.")
+                setMessage("무단배포를 금지합니다.\nRedistribution is prohibited.")
                 setView(checkBox)
                 setPositiveButton("확인 / OK") { _, _ ->
                     if (checkBox.isChecked) {
@@ -41,7 +41,7 @@ class MainActivity : Activity() {
             }
         }
 
-        // 2. UI 레이아웃
+        // 2. UI 구성
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         addr = EditText(this).apply { 
@@ -58,7 +58,7 @@ class MainActivity : Activity() {
             max = 100
         }
 
-        // 3. 웹뷰 설정
+        // 3. 웹뷰 및 기능 설정
         webView = WebView(this).apply {
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
             settings.javaScriptEnabled = true
@@ -103,4 +103,3 @@ class MainActivity : Activity() {
         if (webView.canGoBack()) webView.goBack() else super.onBackPressed() 
     }
 }
-
