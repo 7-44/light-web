@@ -1,102 +1,80 @@
 package com.example.myweb
 
 import android.app.Activity
-import android.graphics.Bitmap
+import android.app.DownloadManager
+import android.content.Context
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.ProgressBar
+import android.webkit.*
+import android.widget.*
 
 class MainActivity : Activity() {
+    private lateinit var webView: WebView
+    private lateinit var progressBar: ProgressBar
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. 전체 수직 레이아웃
-        val rootLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        // 2. 상단 도구 모음 (주소창 + 새로고침)
-        val toolBar = LinearLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            orientation = LinearLayout.HORIZONTAL
-        }
-        val addressBar = EditText(this).apply {
+        // 메인 레이아웃
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        
+        // 주소창 영역
+        val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val addr = EditText(this).apply { 
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            hint = "URL"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
-            imeOptions = EditorInfo.IME_ACTION_GO
+            inputType = 1; hint = "URL" 
         }
-        val btnRefresh = Button(this).apply { text = "↻" }
-        toolBar.addView(addressBar)
-        toolBar.addView(btnRefresh)
+        val btnGo = Button(this).apply { text = "go" }
+        toolbar.addView(addr); toolbar.addView(btnGo)
 
-        // 3. 로딩바
-        val progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 10)
-            max = 100
+        // 웹뷰 컨테이너
+        val container = FrameLayout(this)
+        webView = WebView(this).apply {
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            }
+            webViewClient = object : WebViewClient() {
+                override fun onPageStarted(v: WebView?, u: String?, b: android.graphics.Bitmap?) { progressBar.visibility = View.VISIBLE }
+                override fun onPageFinished(v: WebView?, u: String?) { progressBar.visibility = View.GONE }
+            }
+            setDownloadListener { url, ua, disp, mime, _ ->
+                val req = DownloadManager.Request(Uri.parse(url)).apply {
+                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, disp, mime))
+                }
+                (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
+                Toast.makeText(this@MainActivity, "다운로드 시작", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // 정적인 로딩바 (애니메이션 최소화)
+        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleSmall).apply {
+            layoutParams = FrameLayout.LayoutParams(100, 100, Gravity.CENTER)
             visibility = View.GONE
         }
+        
+        container.addView(webView); container.addView(progressBar)
+        root.addView(toolbar); root.addView(container)
+        setContentView(root)
 
-        // 4. 웹뷰 (화면 중간 채움)
-        val webView = WebView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
-            settings.javaScriptEnabled = true
+        // 버튼 및 키보드 액션
+        btnGo.setOnClickListener { 
+            val url = if (addr.text.startsWith("http")) addr.text.toString() else "https://${addr.text}"
+            webView.loadUrl(url) 
         }
-
-        // 5. 하단 뒤로가기 버튼
-        val bottomBar = LinearLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            orientation = LinearLayout.HORIZONTAL
-        }
-        val btnBack = Button(this).apply { 
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            text = "<뒤로가기 
-        }
-        bottomBar.addView(btnBack)
-
-        // 웹뷰 클라이언트 및 상태 처리
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                progressBar.visibility = View.VISIBLE
-                addressBar.setText(url)
-            }
-            override fun onPageFinished(view: WebView?, url: String?) {
-                progressBar.visibility = View.GONE
-            }
-        }
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                progressBar.progress = newProgress
-            }
-        }
+        addr.setOnEditorActionListener { _, actionId, _ -> if (actionId == EditorInfo.IME_ACTION_GO) btnGo.performClick(); true }
+        
         webView.loadUrl("https://www.google.com")
-
-       
-        rootLayout.addView(toolBar)
-        rootLayout.addView(progressBar)
-        rootLayout.addView(webView)
-        rootLayout.addView(bottomBar)
-
-        setContentView(rootLayout)
-
-      
-        btnBack.setOnClickListener { if (webView.canGoBack()) webView.goBack() }
-        btnRefresh.setOnClickListener { webView.reload() }
-        addressBar.setOnEditorActionListener { v, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_GO) {
-                val input = v.text.toString()
-                val url = if (input.startsWith("http")) input else "https://$input"
-                webView.loadUrl(url)
-                true
-            } else false
-        }
     }
+
+    override fun onBackPressed() { if (webView.canGoBack()) webView.goBack() else super.onBackPressed() }
 }
+
