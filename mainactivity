@@ -1,105 +1,131 @@
-package com.example.myweb
+package com.example.a1
 
-import android.app.Activity
 import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import android.webkit.*
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.*
+import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : Activity() {
+class MainActivity : AppCompatActivity() {
+
     private lateinit var webView: WebView
-    private lateinit var progressBar: ProgressBar
-    private lateinit var addr: EditText
+    private lateinit var urlInput: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. 7일 주기 팝업 및 안내 문구 설정
-        val prefs = getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        val lastShowTime = prefs.getLong("last_show_time", 0L)
-        if (System.currentTimeMillis() - lastShowTime > 7 * 24 * 60 * 60 * 1000L) {
-            val checkBox = CheckBox(this).apply { text = "일주일간 다시 보지 않기 / Don't show for 7 days" }
-            AlertDialog.Builder(this).apply {
-                setTitle("공지사항 / Notice")
-                setMessage("무단배포를 금지합니다.\nRedistribution is prohibited.")
-                setView(checkBox)
-                setPositiveButton("확인 / OK") { _, _ ->
-                    if (checkBox.isChecked) {
-                        prefs.edit().putLong("last_show_time", System.currentTimeMillis()).apply()
-                    }
-                }
-                setCancelable(false)
-                show()
+        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        val savedUrl = prefs.getString("startUrl", "") ?: ""
+        val startUrl = if (savedUrl.isNullOrBlank()) "https://www.google.com" else {
+            if (savedUrl.startsWith("http")) savedUrl else "https://$savedUrl"
+        }
+        val isHeaderTop = prefs.getInt("pos", 1) == 1
+
+        val mainLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(-1, -1)
+        }
+
+        // 주소창 영역
+        val headerLayout = LinearLayout(this).apply { layoutParams = LinearLayout.LayoutParams(-1, -2) }
+        urlInput = EditText(this).apply { hint = "URL을 입력하세요"; layoutParams = LinearLayout.LayoutParams(0, -2, 1.0f) }
+        val goButton = Button(this).apply {
+            text = "이동"
+            setOnClickListener {
+                val url = urlInput.text.toString()
+                webView.loadUrl(if (url.startsWith("http")) url else "https://$url")
             }
         }
+        headerLayout.addView(urlInput); headerLayout.addView(goButton)
 
-        // 2. UI 구성
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val toolbar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        addr = EditText(this).apply { 
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            inputType = 1; hint = "URL 입력" 
-        }
-        val btnGo = Button(this).apply { text = "이동" }
-        toolbar.addView(addr); toolbar.addView(btnGo)
-
-        val container = FrameLayout(this)
-        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 8, Gravity.TOP)
-            visibility = View.GONE
-            max = 100
-        }
-
-        // 3. 웹뷰 및 기능 설정
+        // 웹뷰
         webView = WebView(this).apply {
-            setLayerType(View.LAYER_TYPE_HARDWARE, null)
+            layoutParams = LinearLayout.LayoutParams(-1, 0, 1.0f)
             settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            
             webViewClient = object : WebViewClient() {
-                override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
-                    super.doUpdateVisitedHistory(view, url, isReload)
-                    addr.setText(url)
+                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                    super.onPageStarted(view, url, favicon)
+                    urlInput.setText(url?.replace("https://", "")?.replace("http://", "")?.split("/")?.get(0))
                 }
             }
-            webChromeClient = object : WebChromeClient() {
-                override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                    if (newProgress == 100) progressBar.visibility = View.GONE
-                    else { progressBar.visibility = View.VISIBLE; progressBar.progress = newProgress }
-                }
-            }
-            setDownloadListener { url, _, disp, mime, _ ->
-                val req = DownloadManager.Request(Uri.parse(url)).apply {
-                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(url, disp, mime))
-                }
-                (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
+            setDownloadListener { url, _, _, _, _ ->
+                val request = DownloadManager.Request(Uri.parse(url))
+                request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "downloaded_file")
+                (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
                 Toast.makeText(this@MainActivity, "다운로드 시작", Toast.LENGTH_SHORT).show()
             }
         }
-        
-        container.addView(webView); container.addView(progressBar)
-        root.addView(toolbar); root.addView(container)
-        setContentView(root)
+        webView.loadUrl(startUrl)
 
-        btnGo.setOnClickListener { 
-            val input = addr.text.toString()
-            webView.loadUrl(if (input.startsWith("http")) input else "https://$input") 
-        }
-        addr.setOnEditorActionListener { _, actionId, _ -> if (actionId == EditorInfo.IME_ACTION_GO) btnGo.performClick(); true }
-        webView.loadUrl("https://www.google.com")
+        // 하단 버튼
+        val footerLayout = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(-1, -2) }
+        val btnBack = Button(this).apply { text = "뒤로"; setOnClickListener { if (webView.canGoBack()) webView.goBack() } }
+        val btnRefresh = Button(this).apply { text = "새로고침"; setOnClickListener { webView.reload() } }
+        val btnSettings = Button(this).apply { text = "설정"; setOnClickListener { showSettingsDialog() } }
+        footerLayout.addView(btnBack); footerLayout.addView(btnRefresh); footerLayout.addView(btnSettings)
+
+        // 레이아웃 배치
+        if (isHeaderTop) { mainLayout.addView(headerLayout); mainLayout.addView(webView) }
+        else { mainLayout.addView(webView); mainLayout.addView(headerLayout) }
+        mainLayout.addView(footerLayout)
+        setContentView(mainLayout)
+
+        // 앱 시작 시 팝업 확인
+        if (prefs.getBoolean("showWelcome", true)) showWelcomeDialog()
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() { if (webView.canGoBack()) webView.goBack() else finish() }
+        })
     }
 
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() { 
-        if (webView.canGoBack()) webView.goBack() else super.onBackPressed() 
+    private fun showWelcomeDialog() {
+        val checkBox = CheckBox(this).apply { text = "다시 보지 않기" }
+        AlertDialog.Builder(this)
+            .setTitle("환영합니다!")
+            .setMessage("이 브라우저는 구글을 기본으로 제공합니다.\n\n[저작권 안내]\n본 소프트웨어의 무단 배포를 엄격히 금지합니다.")
+            .setView(checkBox)
+            .setPositiveButton("확인") { _, _ ->
+                if (checkBox.isChecked) getSharedPreferences("settings", Context.MODE_PRIVATE).edit().putBoolean("showWelcome", false).apply()
+            }.show()
+    }
+
+    private fun showSettingsDialog() {
+        val dialogView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 50, 50, 50) }
+        val urlEdit = EditText(this).apply { hint = "시작 페이지 (예: google.com)" }
+        val posRadio = RadioGroup(this).apply {
+            addView(RadioButton(this@MainActivity).apply { text = "주소창 위"; id = 1 })
+            addView(RadioButton(this@MainActivity).apply { text = "주소창 아래"; id = 2 })
+        }
+        val btnTutorial = Button(this).apply {
+            text = "튜토리얼 다시보기"
+            setOnClickListener {
+                getSharedPreferences("settings", Context.MODE_PRIVATE).edit().putBoolean("showWelcome", true).apply()
+                Toast.makeText(this@MainActivity, "튜토리얼이 초기화되었습니다.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        dialogView.addView(TextView(this).apply { text = "시작 페이지 URL:" }); dialogView.addView(urlEdit)
+        dialogView.addView(posRadio); dialogView.addView(btnTutorial)
+
+        AlertDialog.Builder(this)
+            .setTitle("설정")
+            .setView(dialogView)
+            .setPositiveButton("저장") { _, _ ->
+                getSharedPreferences("settings", Context.MODE_PRIVATE).edit().apply {
+                    putString("startUrl", urlEdit.text.toString())
+                    putInt("pos", posRadio.checkedRadioButtonId)
+                    apply()
+                }
+                Toast.makeText(this, "저장되었습니다. 앱을 재실행하세요.", Toast.LENGTH_LONG).show()
+            }.setNegativeButton("취소", null).show()
     }
 }
